@@ -1,12 +1,13 @@
 (function( $ ) {
     $(document).ready( function() {
 
-        $('.edd-client-cred-link').on('click',function () {
+        let $body = $('body');
+        $body.on('click', '#the-list .edd-client-cred-link',function () {
             $(this).closest('tr').next('.edd-client-row').toggle('slow', 'linear');
             $(this).closest('p').next('.edd-client-row').toggle('slow', 'linear');
         });
 
-        $('.edd-client-button').on('click', function (event) {
+        $body.on('click','#the-list .edd-client-button', function (event) {
             event.preventDefault();
 
             $('.dashicons', this).removeClass( 'dashicons-yes-alt' ).addClass('dashicons-update');
