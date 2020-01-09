@@ -1,0 +1,31 @@
+.edd-client-license-key{
+    width: 280px;
+}
+
+.edd-client-button{
+    line-height: 20px !important;
+    margin: 0 10px 0 10px !important;
+}
+
+.edd-client-row{
+    padding: 10px;
+}
+
+.spin {
+    animation: dashicons-spin 1s infinite;
+    animation-timing-function: linear;
+}
+
+@keyframes dashicons-spin {
+    0% {
+        transform: rotate( 0deg );
+    }
+    100% {
+        transform: rotate( 360deg );
+    }
+}
+
+.edd-client-msg{
+    margin-top: 10px;
+    padding: 10px;
+}
