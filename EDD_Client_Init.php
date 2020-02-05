@@ -14,13 +14,10 @@ if ( ! class_exists( 'EDD_Client_Init' ) ):
          */
         public function __construct($plugin_file_path, $api_end_point_url)
         {
-            $this->api_end_point_url        = $api_end_point_url;
+        	$this->api_end_point_url        = $api_end_point_url;
             $this->plugin_file_path         = $plugin_file_path;
 
-            // register_activation_hook( $plugin_file_slug, array($this, 'show_license_notification'));
-            // register_deactivation_hook( self::$plugin_file_slug, array($this, 'plugin_deactivation_hook'));
-
-            add_action( 'admin_init', function (){
+	        add_action( 'admin_init', function (){
 
                 $plugin_data                    = get_plugin_data($this->plugin_file_path);
                 $this->plugin['version']        = $plugin_data['Version'];
@@ -31,13 +28,22 @@ if ( ! class_exists( 'EDD_Client_Init' ) ):
                 $this->plugin['license_status'] = get_option($this->plugin['machine_name'].'_license_status');
                 $this->plugin['slug'] = plugin_basename($this->plugin_file_path);
 
-                // Enqueue Scripts
+	            // Enqueue Scripts
                 add_action('admin_print_scripts-plugins.php', [ $this, 'enqueue_scripts' ]);
                 add_action('admin_print_styles-plugins.php', [ $this, 'enqueue_styles' ]);
 
-                // Add GUI for License operations
-                add_filter('plugin_action_links_' . $this->plugin['slug'], [$this, 'insert_link'], 9, 2);
-                add_action('after_plugin_row_' . $this->plugin['slug'], [ $this, 'insert_row' ], 10, 3);
+                // License GUI
+		        if ($this->plugin['license_status'] !== 'valid') {
+			        global $pagenow;
+			        if ( $pagenow == 'plugins.php' ) {
+				        add_action( 'admin_notices', [ $this, 'display_admin_notice' ] );
+			        }
+			        add_action('after_plugin_row_' . $this->plugin['slug'], [ $this, 'insert_license_row' ], 10, 3);
+		        }
+		        else{
+			        add_filter('plugin_action_links_' . $this->plugin['slug'], [$this, 'insert_license_link'], 9, 2);
+			        add_action('after_plugin_row_' . $this->plugin['slug'], [ $this, 'insert_license_operation_row' ], 10, 3);
+		        }
 
                 // Add Ajax Actions
                 add_action( 'wp_ajax_'.$this->plugin['machine_name'].'-edd-client-operations', [ $this, 'edd_operations' ] );
@@ -68,53 +74,66 @@ if ( ! class_exists( 'EDD_Client_Init' ) ):
         /*
          * Add a License Link to Plugin
          */
-        public function insert_link($links)
+        public function insert_license_link($links)
         {
-
-            if ($this->plugin['license_status'] == 'valid') {
-                $settings_link = '<a href="javascript:void(0);" class="edd-client-cred-link">License</a>';
-                array_push($links, $settings_link);
-            }
+	        $settings_link = '<a href="javascript:void(0);" class="edd-client-cred-link">License</a>';
+	        array_push($links, $settings_link);
             return $links;
         }
 
         /*
-         * Adds row on the plugin table. Provides GUI to enter License, deactivate, check Expiry etc.
+         * Adds row on the plugin table. Provides GUI to enter License
          */
-        public function insert_row($plugin_file, $plugin_data, $status)
+        public function insert_license_row()
         {
-
-            if ($this->plugin['license_status'] !== 'valid') {
-                ?>
-                <tr class="plugin-update-tr active">
-                    <td colspan="3">
-                        <div class="update-message notice inline notice-error notice-alt">
-                            <p>Enter <a href="javascript:void(0);" class="edd-client-cred-link">License</a> to get security and feature updates</p>
-                            <div class="edd-client-row" style="display: none">
-                                <input class="edd-client-license-key" type="text" placeholder="Enter Your License"/>
-                                <button class="button edd-client-button" data-action=<?php echo $this->plugin['machine_name'].'-edd-client-operations'?> data-operation="activate_license" data-nonce="<?php echo wp_create_nonce( $this->plugin['machine_name'].'-edd-client-operations' ) ?>"> <span class="dashicons dashicons-update"></span> Activate License</button>
-                            </div>
+	        ?>
+            <tr class="plugin-update-tr active">
+                <td colspan="3">
+                    <div class="update-message notice inline notice-error notice-alt">
+	                    <p>Enter <a href="javascript:void(0);" class="edd-client-cred-link">License</a> key for <?php echo $this->plugin['name']?> to get security and feature updates to properly work on your site.</p>
+                        <div id="<?php echo 'ec-'.$this->plugin['machine_name']?>" class="edd-client-row" style="display:none">
+                            <input class="edd-client-license-key" type="text" placeholder="Enter Your License"/>
+                            <button class="button edd-client-button" data-action=<?php echo $this->plugin['machine_name'].'-edd-client-operations'?> data-operation="activate_license" data-nonce="<?php echo wp_create_nonce( $this->plugin['machine_name'].'-edd-client-operations' ) ?>"> <span class="dashicons dashicons-update"></span> Activate License</button>
                         </div>
-                    </td>
-                </tr>
-                <?php
-            }
-            else {
-                ?>
-                <tr class="edd-client-row notice-warning notice-alt" style="display: none">
-                    <td colspan="3">
-                        <div class="edd-client-row">
-                            <input class="edd-client-license-key" type="text" style="margin-right:-14px; border-top-right-radius:0px; border-bottom-right-radius:0px; border-right:0px;" value="<?php echo $this->plugin['license'] ?>"/>
-                            <button class="button edd-client-button" data-action=<?php echo $this->plugin['machine_name'].'-edd-client-operations'?> data-operation="change_license" data-nonce="<?php echo wp_create_nonce( $this->plugin['machine_name'].'-edd-client-operations' ) ?>" style="margin-left:-4px; border-top-left-radius:0px; border-bottom-left-radius:0px;"> <span class="dashicons dashicons-update"></span> Change License</button>
-
-                            <button class="button edd-client-button" data-action=<?php echo $this->plugin['machine_name'].'-edd-client-operations'?> data-operation="check_expiry" data-nonce="<?php echo wp_create_nonce( $this->plugin['machine_name'].'-edd-client-operations' ) ?>"> <span class="dashicons dashicons-update"></span> Check Expiry Date</button>
-                            <button class="button edd-client-button" data-action=<?php echo $this->plugin['machine_name'].'-edd-client-operations'?> data-operation="deactivate_license" data-nonce="<?php echo wp_create_nonce( $this->plugin['machine_name'].'-edd-client-operations' ) ?>"> <span class="dashicons dashicons-update"></span> Deactivate License</button>
-                        </div>
-                    </td>
-                </tr>
-                <?php
-            }
+                    </div>
+                </td>
+            </tr>
+	        <?php
         }
+
+        /*
+         * Adds row on the plugin table. Provides GUI to deactivate, check Expiry of license etc.
+         */
+	    public function insert_license_operation_row()
+	    {
+		    ?>
+            <tr class="edd-client-row notice-warning notice-alt" style="display: none">
+                <td colspan="3">
+                    <div class="edd-client-row">
+                        <input class="edd-client-license-key" type="text" style="margin-right:-14px; border-top-right-radius:0px; border-bottom-right-radius:0px; border-right:0px;" value="<?php echo $this->plugin['license'] ?>"/>
+                        <button class="button edd-client-button" data-action=<?php echo $this->plugin['machine_name'].'-edd-client-operations'?> data-operation="change_license" data-nonce="<?php echo wp_create_nonce( $this->plugin['machine_name'].'-edd-client-operations' ) ?>" style="margin-left:-4px; border-top-left-radius:0px; border-bottom-left-radius:0px;"> <span class="dashicons dashicons-update"></span> Change License</button>
+
+                        <button class="button edd-client-button" data-action=<?php echo $this->plugin['machine_name'].'-edd-client-operations'?> data-operation="check_expiry" data-nonce="<?php echo wp_create_nonce( $this->plugin['machine_name'].'-edd-client-operations' ) ?>"> <span class="dashicons dashicons-update"></span> Check Expiry Date</button>
+                        <button class="button edd-client-button" data-action=<?php echo $this->plugin['machine_name'].'-edd-client-operations'?> data-operation="deactivate_license" data-nonce="<?php echo wp_create_nonce( $this->plugin['machine_name'].'-edd-client-operations' ) ?>"> <span class="dashicons dashicons-update"></span> Deactivate License</button>
+                    </div>
+                </td>
+            </tr>
+		    <?php
+        }
+
+	    /*
+		 *  Display admin notice if plugin license key is not yet entered
+		 */
+	    public function display_admin_notice(){
+		    ?>
+		    <div class="notice notice-warning is-dismissible">
+			    <p>Almost done - Activate license to make <strong><?php echo $this->plugin['name']?></strong> properly work on your site
+				    <input class="edd-client-license-key" type="text" placeholder="Enter Your License"/>
+				    <button class="button edd-client-button" data-action=<?php echo $this->plugin['machine_name'].'-edd-client-operations'?> data-operation="activate_license" data-nonce="<?php echo wp_create_nonce( $this->plugin['machine_name'].'-edd-client-operations' ) ?>"> <span class="dashicons dashicons-update"></span> Activate License</button>
+			    </p>
+		    </div>
+		    <?php
+	    }
 
         /**
          * Trigger Plugin Update
@@ -131,15 +150,6 @@ if ( ! class_exists( 'EDD_Client_Init' ) ):
                     'author'    => $this->plugin['author']
                 )
             );
-
-        }
-
-
-        public function plugin_activation_hook(){
-
-        }
-
-        public function plugin_deactivation_hook(){
 
         }
 
@@ -282,7 +292,6 @@ if ( ! class_exists( 'EDD_Client_Init' ) ):
             }
         }
 
-
         /*
          * Invalidate License for current website. This will decrease the site count
          */
@@ -313,7 +322,6 @@ if ( ! class_exists( 'EDD_Client_Init' ) ):
             $license_data = json_decode( wp_remote_retrieve_body( $response ) );
             return $license_data;
         }
-
 
         /*
          * Check License Expiry
