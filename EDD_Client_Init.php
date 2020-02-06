@@ -5,29 +5,30 @@ require_once 'EDD_Client_Updater.php';
 if ( ! class_exists( 'EDD_Client_Init' ) ):
     class EDD_Client_Init {
 
-        public $plugin_file_path;
-        public $api_end_point_url;
-        public $plugin;
+	    protected array $plugin = [];
 
         /*
          * Instantiate the EDD_Client_Init class
          */
-        public function __construct($plugin_file_path, $api_end_point_url)
+        public function __construct($plugin_path, $api_url)
         {
-        	$this->api_end_point_url        = $api_end_point_url;
-            $this->plugin_file_path         = $plugin_file_path;
+	        $plugin_data = get_file_data($plugin_path, [
+		        'name'          => 'Plugin Name',
+		        'version'       => 'Version',
+                'author'        => 'Author',
+	        ], 'plugin');
+
+	        $this->plugin['name']           = $plugin_data['name'];
+            $this->plugin['version']        = $plugin_data['version'];
+	        $this->plugin['author']         = $plugin_data['author'];
+	        $this->plugin['machine_name']   = str_replace(' ', '-', strtolower($this->plugin['name']));
+	        $this->plugin['path']           = $plugin_path;
+	        $this->plugin['slug']           = plugin_basename($this->plugin['path']);
+	        $this->plugin['api_url']        = $api_url;
+	        $this->plugin['license']        = trim(get_option($this->plugin['machine_name'].'_license_key'));
+	        $this->plugin['license_status'] = get_option($this->plugin['machine_name'].'_license_status');
 
 	        add_action( 'admin_init', function (){
-
-                $plugin_data                    = get_plugin_data($this->plugin_file_path);
-                $this->plugin['version']        = $plugin_data['Version'];
-                $this->plugin['author']         = $plugin_data['Author'];
-                $this->plugin['name']           = $plugin_data['Name'];
-                $this->plugin['machine_name']   = str_replace(' ', '-', strtolower($this->plugin['name']));
-                $this->plugin['license']        = trim(get_option($this->plugin['machine_name'].'_license_key'));
-                $this->plugin['license_status'] = get_option($this->plugin['machine_name'].'_license_status');
-                $this->plugin['slug'] = plugin_basename($this->plugin_file_path);
-
 	            // Enqueue Scripts
                 add_action('admin_print_scripts-plugins.php', [ $this, 'enqueue_scripts' ]);
                 add_action('admin_print_styles-plugins.php', [ $this, 'enqueue_styles' ]);
@@ -51,6 +52,18 @@ if ( ! class_exists( 'EDD_Client_Init' ) ):
                 // Trigger Plugin Update
                 $this->plugin_updater();
             });
+        }
+
+        /*
+         * A helper function to return if plugin is premium
+         */
+        public function is_premium(){
+            if ($this->plugin['license_status'] === 'valid'){
+	            return true;
+            }
+            else{
+                return false;
+            }
         }
 
         /*
@@ -141,8 +154,8 @@ if ( ! class_exists( 'EDD_Client_Init' ) ):
         public function plugin_updater()
         {
             new EDD_Client_Updater(
-                $this->api_end_point_url,
-                $this->plugin_file_path,
+                $this->plugin['api_url'],
+                $this->plugin['path'],
                 array(
                     'version'   => $this->plugin['version'],
                     'license'   => $this->plugin['license'],
@@ -167,7 +180,7 @@ if ( ! class_exists( 'EDD_Client_Init' ) ):
                     $license = !empty($_POST['license']) ? $_POST['license'] : wp_send_json_error('License field can not be empty');
                     $license = sanitize_text_field($license);
 
-                    $license_data = $this->validate_license($license, $this->plugin['name'], $this->api_end_point_url);
+                    $license_data = $this->validate_license($license, $this->plugin['name'], $this->plugin['api_url']);
                     if( $license_data->license === 'valid' ) {
                         update_option($this->plugin['machine_name'].'_license_status', $license_data->license);
                         update_option($this->plugin['machine_name'].'_license_key', $license);
@@ -175,7 +188,7 @@ if ( ! class_exists( 'EDD_Client_Init' ) ):
                     }
                     break;
                 case 'deactivate_license':
-                    $license_data = $this->invalidate_license($this->plugin['license'], $this->plugin['name'], $this->api_end_point_url);
+                    $license_data = $this->invalidate_license($this->plugin['license'], $this->plugin['name'], $this->plugin['api_url']);
                     if( $license_data->license === 'deactivated' ) {
                         delete_option($this->plugin['machine_name'].'_license_status');
                         delete_option($this->plugin['machine_name'].'_license_key');
@@ -187,9 +200,9 @@ if ( ! class_exists( 'EDD_Client_Init' ) ):
                     $new_license = sanitize_text_field($new_license);
                     $old_license = $this->plugin['license'];
                     if($new_license !== $old_license){
-                        $license_data = $this->validate_license($new_license, $this->plugin['name'], $this->api_end_point_url);
+                        $license_data = $this->validate_license($new_license, $this->plugin['name'], $this->plugin['api_url']);
                         if ($license_data->license === 'valid'){
-                            $license_data = $this->invalidate_license($old_license, $this->plugin['name'], $this->api_end_point_url);
+                            $license_data = $this->invalidate_license($old_license, $this->plugin['name'], $this->plugin['api_url']);
                             if($license_data->license === 'deactivated'){
                                 update_option($this->plugin['machine_name'].'_license_key', $new_license);
                                 wp_send_json_success('License Successfully Changed.');
@@ -201,8 +214,8 @@ if ( ! class_exists( 'EDD_Client_Init' ) ):
                     }
                     break;
                 case 'check_expiry':
-                    $license = trim($this->plugin['license']);
-                    $this->check_expiry($license, $this->plugin['name'], $this->api_end_point_url);
+                    $license = $this->plugin['license'];
+                    $this->check_expiry($license, $this->plugin['name'], $this->plugin['api_url']);
                     break;
                 default:
                     wp_send_json_error('Something went wrong');
@@ -213,7 +226,7 @@ if ( ! class_exists( 'EDD_Client_Init' ) ):
         /*
          *  Validate License
          */
-        public function validate_license($license, $plugin_name, $api_end_point_url){
+        public function validate_license($license, $plugin_name, $api_url){
             // data to send in our API request
             $api_params = array(
                 'edd_action' => 'activate_license',
@@ -223,7 +236,7 @@ if ( ! class_exists( 'EDD_Client_Init' ) ):
             );
 
             // Call the custom API.
-            $response = wp_remote_post($api_end_point_url, array('timeout' => 15, 'sslverify' => false, 'body' => $api_params));
+            $response = wp_remote_post($api_url, array('timeout' => 15, 'sslverify' => false, 'body' => $api_params));
 
             // make sure the response came back okay
             if (is_wp_error($response) || 200 !== wp_remote_retrieve_response_code($response)) {
@@ -295,7 +308,7 @@ if ( ! class_exists( 'EDD_Client_Init' ) ):
         /*
          * Invalidate License for current website. This will decrease the site count
          */
-        public function invalidate_license($license, $plugin_name, $api_end_point_url) {
+        public function invalidate_license($license, $plugin_name, $api_url) {
             // data to send in our API request
             $api_params = array(
                 'edd_action' => 'deactivate_license',
@@ -305,7 +318,7 @@ if ( ! class_exists( 'EDD_Client_Init' ) ):
             );
 
             // Call the custom API.
-            $response = wp_remote_post( $api_end_point_url, array( 'timeout' => 15, 'sslverify' => false, 'body' => $api_params ) );
+            $response = wp_remote_post( $api_url, array( 'timeout' => 15, 'sslverify' => false, 'body' => $api_params ) );
 
             // make sure the response came back okay
             if ( is_wp_error( $response ) || 200 !== wp_remote_retrieve_response_code( $response ) ) {
@@ -326,7 +339,7 @@ if ( ! class_exists( 'EDD_Client_Init' ) ):
         /*
          * Check License Expiry
          */
-        public function check_expiry($license, $plugin_name, $api_end_point_url) {
+        public function check_expiry($license, $plugin_name, $api_url) {
 
             $api_params = array(
                 'edd_action' => 'check_license',
@@ -336,7 +349,7 @@ if ( ! class_exists( 'EDD_Client_Init' ) ):
             );
 
             // Call the custom API.
-            $response = wp_remote_post( $api_end_point_url, array( 'timeout' => 15, 'sslverify' => false, 'body' => $api_params ) );
+            $response = wp_remote_post( $api_url, array( 'timeout' => 15, 'sslverify' => false, 'body' => $api_params ) );
 
             if ( is_wp_error( $response ) ){
                 wp_send_json_error();
