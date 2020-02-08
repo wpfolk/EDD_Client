@@ -19,7 +19,7 @@ if ( ! class_exists( 'EDD_Client_Init' ) ):
 	        ], 'plugin');
 
 	        $this->plugin['name']           = $plugin_data['name'];
-            $this->plugin['version']        = $plugin_data['version'];
+	        $this->plugin['version']        = $plugin_data['version'];
 	        $this->plugin['author']         = $plugin_data['author'];
 	        $this->plugin['machine_name']   = str_replace(' ', '-', strtolower($this->plugin['name']));
 	        $this->plugin['path']           = $plugin_path;
@@ -189,7 +189,7 @@ if ( ! class_exists( 'EDD_Client_Init' ) ):
                     break;
                 case 'deactivate_license':
                     $license_data = $this->invalidate_license($this->plugin['license'], $this->plugin['name'], $this->plugin['api_url']);
-                    if( $license_data->license === 'deactivated' ) {
+                    if( $license_data->license === 'deactivated' || $license_data->license === 'failed' ) {
                         delete_option($this->plugin['machine_name'].'_license_status');
                         delete_option($this->plugin['machine_name'].'_license_key');
                         wp_send_json_success('License deactivated for this site');
@@ -351,17 +351,34 @@ if ( ! class_exists( 'EDD_Client_Init' ) ):
             // Call the custom API.
             $response = wp_remote_post( $api_url, array( 'timeout' => 15, 'sslverify' => false, 'body' => $api_params ) );
 
-            if ( is_wp_error( $response ) ){
-                wp_send_json_error();
-            }
+	        // make sure the response came back okay
+	        if ( is_wp_error( $response ) || 200 !== wp_remote_retrieve_response_code( $response ) ) {
+
+		        if ( is_wp_error( $response ) ) {
+			        $message = $response->get_error_message();
+		        } else {
+			        $message = __( 'An error occurred, please try again.' );
+		        }
+		        wp_send_json_error($message);
+	        }
 
             $license_data = json_decode( wp_remote_retrieve_body( $response ) );
+
             if( $license_data->license == 'valid' ) {
-                wp_send_json_success('License Expires on: '.$license_data->expires);
-            }
-            else{
-                wp_send_json_error('Something Went Wrong');
-            }
+		        wp_send_json_success('License will expire on: '.$license_data->expires);
+	        }
+            elseif ($license_data->license == 'expired'){
+		        wp_send_json_success('License expired on: '.$license_data->expires);
+	        }
+            elseif ($license_data->license == 'disabled'){
+		        wp_send_json_success('Your license has been disabled by the seller');
+	        }
+            elseif ($license_data->license == 'invalid'){
+		        wp_send_json_success('Invalid license key');
+	        }
+	        else{
+		        wp_send_json_error('Something went wrong');
+	        }
         }
 
     }
