@@ -203,7 +203,7 @@ if ( ! class_exists( 'EDD_Client_Init' ) ):
                         $license_data = $this->validate_license($new_license, $this->plugin['name'], $this->plugin['api_url']);
                         if ($license_data->license === 'valid'){
                             $license_data = $this->invalidate_license($old_license, $this->plugin['name'], $this->plugin['api_url']);
-                            if($license_data->license === 'deactivated'){
+                            if($license_data->license === 'deactivated' || $license_data->license === 'failed'){
                                 update_option($this->plugin['machine_name'].'_license_key', $new_license);
                                 wp_send_json_success('License Successfully Changed.');
                             }
