@@ -363,12 +363,14 @@ if ( ! class_exists( 'EDD_Client_Init' ) ):
 	        }
 
             $license_data = json_decode( wp_remote_retrieve_body( $response ) );
+	    $expires      = (bool) strtotime( $license_data->expires ) ? date( get_option( 'date_format' ), strtotime( $license_data->expires ) ) : $license_data->expires;
+
 
             if( $license_data->license == 'valid' ) {
-		        wp_send_json_success('License will expire on: '.$license_data->expires);
+		        wp_send_json_success('License will expire on: '.sanitize_text_field($expires));
 	        }
             elseif ($license_data->license == 'expired'){
-		        wp_send_json_success('License expired on: '.$license_data->expires);
+		        wp_send_json_success('License expired on: '.sanitize_text_field($expires));
 	        }
             elseif ($license_data->license == 'disabled'){
 		        wp_send_json_success('Your license has been disabled by the seller');
